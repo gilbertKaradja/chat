@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Demo</title>
+    <script src="/react"></script>
+    <script src="/react-dom"></script>
+    <script src="/babel"></script>
+    <script src="/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+
+
+
+        class Chat extends React.Component {
+          constructor() {
+            super();
+            let socket = io();
+
+
+
+            this.state = {
+              socket: socket,
+              newuserid: '',
+              userid: false,
+              activeScreen: 'contact-list', //chat-list, contact-list, chat
+              chatWith: '',
+              contacts: ['tolani', 'ay', 'paul', 'tobe', 'gil'],
+              activeChatMessages: [],
+              chats: [],
+              messageToSend: ''
+            }
+
+            socket.on('message', (message) => {
+              if(message.from  === this.state.chatWith) {
+                let currentMessages = this.state.activeChatMessages.slice();
+                currentMessages.push(message);
+                this.setState({
+                  activeChatMessages: currentMessages
+                });
+              }
+            });
+
+            socket.on('updateChat', (messages) => {
+              this.setState({
+                activeScreen: 'chat',
+                activeChatMessages: messages
+              });
+            });
+
+            socket.on('chatList', (message) => {
+              console.log(message);
+              this.setState({
+                activeScreen: 'chat-list',
+                chatList: message
+              });
+            });
+
+            this.setUser = this.setUser.bind(this);
+            this.handleNewuseridChange = this.handleNewuseridChange.bind(this);
+
+            this.openChat = this.openChat.bind(this);
+            this.switchToChatList = this.switchToChatList.bind(this);
+            this.sendMessage =this.sendMessage.bind(this);
+            this.handleMessageChange = this.handleMessageChange.bind(this);
+
+            this.clearHistory = this.clearHistory.bind(this);
+
+
+
+          }
+
+          render() {
+            if(!this.state.userid) {
+              return(
+                <div>
+                  userid: <input value={this.state.newuserid} onChange={this.handleNewuseridChange}/> <button onClick={this.setUser}>Set User</button>
+                </div>
+              );
+            }
+
+            let page = null;
+            if(this.state.activeScreen === 'contact-list') {
+              let contactItems = this.state.contacts.map( (item) =>{
+                return(
+                  <div key={item} className="" onClick={() => {this.openChat(item)}}>{item}</div>
+                );
+              })
+              page = (
+                <div className="contact-list">
+                  {contactItems}
+                </div>
+              );
+            }
+
+            if(this.state.activeScreen === 'chat-list') {
+              let items = this.state.chatList.map( (item) => {
+                return(
+                  <div key={item.message}>
+                    <br/>
+                    <div>{item.name}</div>
+                    <div>{item.message}</div>
+                    <br/>
+                  </div>
+                );
+              })
+
+              page = (
+                <div className="chat-list">
+                  {items}
+                </div>
+              );
+            }
+
+            if(this.state.activeScreen === 'chat') {
+              let msg = this.state.activeChatMessages.map( (item) => {
+                return(
+                  <div key={item.timestamp} className={item.from === this.state.userid ? 'foreign-message' : ''}>{item.message}</div>
+                );
+              });
+              page = (
+                <div className="chat">
+                  <div onClick={() => {this.setState({activeScreen: 'contact-list'})}}>back to contacts</div>
+                  <div>chat with: {this.state.chatWith}</div>
+                  <div>MESSAGES</div>
+                  {msg}
+                  <input type="text" value={this.state.messageToSend} onChange={this.handleMessageChange} /><button onClick={this.sendMessage}>Send Message</button>
+                  <div>*************************</div>
+                  <button onClick={this.clearHistory}>Clear History</button>
+                </div>
+              );
+            }
+
+
+
+            return(
+              <div className="app-root">
+                <div>*************************</div>
+                <div>Signed in: {this.state.userid}</div>
+                <div>*************************</div>
+                <div className="route-tab">
+                  <div onClick={() => {this.setState({activeScreen: 'contact-list'})}}>CONTACTS{this.state.activeScreen == 'contact-list' ? ' <-' : ''}</div>
+                  <div onClick={this.switchToChatList}>CHATS{this.state.activeScreen == 'chat-list' ? ' <-' : ''}</div>
+                </div>
+                <div>*************************</div>
+                {page}
+              </div>
+            );
+          }
+
+          setUser() {
+            this.setState({userid: this.state.newuserid})
+            this.state.socket.emit('init', this.state.newuserid);
+          }
+
+          handleNewuseridChange(e) {
+            this.setState({
+              newuserid: e.target.value
+            });
+          }
+
+
+          openChat(userid) {
+            this.setState({
+              chatWith: userid
+            }, () => {
+              let params = {
+                userid: this.state.userid,
+                chatWith: this.state.chatWith
+              }
+              if(this.state.activeChatMessages.length === 0) {
+                params.timestamp = false;
+              } else {
+                  params.timestamp = this.state.activeChatMessages[this.state.activeChatMessages.length - 1].timestamp
+              }
+              params.timestamp = false;
+              this.state.socket.emit('updateChat', params);
+            });
+          }
+
+          sendMessage() {
+            let params = {
+              userid: this.state.userid,
+              chatWith: this.state.chatWith,
+              message: this.state.messageToSend
+            }
+            this.state.socket.emit('message', params);
+
+            let message = {
+              from: this.state.userid,
+              message: this.state.messageToSend,
+              timestamp: Date.now()
+            }
+            let currentMessages = this.state.activeChatMessages.slice();
+            console.log(currentMessages);
+            currentMessages.push(message);
+            this.setState({
+              activeChatMessages: currentMessages,
+              messageToSend: ''
+            });
+          }
+
+          handleMessageChange(e) {
+            this.setState({
+              messageToSend: e.target.value
+            });
+          }
+
+          clearHistory() {
+            let params = {
+              userid: this.state.userid,
+              chatWith: this.state.chatWith,
+              timestamp: Date.now()
+            }
+            this.state.socket.emit('deleteHistory', params);
+            this.setState({
+              activeChatMessages: []
+            })
+          }
+
+          switchToChatList() {
+            //fetchChatlist
+            this.state.socket.emit('chatList', {userid: this.state.userid});
+          }
+
+      }
+
+
+
+
+      ReactDOM.render(
+        <Chat />,
+        document.getElementById('root')
+      );
+
+    </script>
+
+    <style>
+      body {
+          font-family: monospace;
+      }
+
+      .foreign-message {
+        color: red;
+      }
+    </style>
+  </body>
+</html>
